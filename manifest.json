@@ -1,6 +1,6 @@
 {
-  "name": "My WD 數位駕駛艙",
-  "short_name": "My WD",
+  "name": "My WD GitHub版",
+  "short_name": "My WD GitHub",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#2c3e50",
