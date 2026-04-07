@@ -1,7 +1,9 @@
 {
-  "name": "My AI Works 展示分享平台",
-  "short_name": "AI Works",
-  "start_url": "./index.html",
+  "name": "My WD 工作儀表板",
+  "short_name": "My WD",
+  "start_url": "/MyWD-app/index.html",
+  "scope": "/MyWD-app/",    
+  "id": "/MyWD-app/",
   "display": "standalone",
   "background_color": "#0b0c10",
   "theme_color": "#0b0c10",
