@@ -83,7 +83,6 @@
     
     .editor { 
         background: #fdfdfd; color: #2c3e50; border-radius: 5px; padding: 15px; flex: 1; overflow-y: auto; outline: none; font-size: 1.05rem; line-height: 1.6; 
-        /* 修正點 1：增強手機端長按選取支援 */
         -webkit-user-select: text;
         user-select: text;
         -webkit-touch-callout: default;
@@ -231,9 +230,13 @@
     let GAS_API_URL = localStorage.getItem(STORAGE_KEY);
 
     window.onload = function() {
-        // 喚醒 PWA 機制 (加入檢查，避免在不支援的通訊協定下引發錯誤)
-        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-            navigator.serviceWorker.register('sw.js').catch(err => console.warn('ServiceWorker error:', err));
+        // 修正點 1: 妥善使用 try-catch 包裝並明確排除 Canvas blob: 網址，徹底解決 Service Worker 同步報錯
+        try {
+            if ('serviceWorker' in navigator && !window.location.href.startsWith('blob:')) {
+                navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW 註冊略過:', err));
+            }
+        } catch (e) {
+            console.log('Service Worker 在此環境下不支援或被阻擋。', e);
         }
 
         // 檢查是否已綁定 API
@@ -292,11 +295,18 @@
                 console.error("讀取資料庫失敗:", error);
                 const loadingMask = document.getElementById('loading-mask');
                 if (loadingMask) {
+                    // 修正點 2: 優化錯誤訊息，提示使用者可能受到預覽沙盒阻擋
                     loadingMask.innerHTML = `
-                        <div style="color:#e74c3c; font-size: 1.2rem; text-align: center; line-height:1.5;">
-                        ❌ 無法連線至 Google Drive<br>
-                        <span style="font-size: 0.9rem; color: #ecf0f1;">請檢查您輸入的 API 網址是否正確，或是否已將 GAS 部署權限設為「所有人」。</span><br><br>
-                        <button onclick="resetApiUrl()" style="padding:8px 15px; border-radius:5px; background:#e74c3c; color:white; border:none; cursor:pointer;">重新輸入網址</button>
+                        <div style="color:#e74c3c; font-size: 1.1rem; text-align: center; line-height:1.6; max-width: 90%;">
+                        <div style="font-size:2rem; margin-bottom:10px;">❌</div>
+                        <strong>無法連線至 Google Drive</strong><br>
+                        <div style="font-size: 0.9rem; color: #ecf0f1; margin-top: 15px; text-align: left; display: inline-block;">
+                            請檢查以下可能原因：<br>
+                            1. API 網址是否正確。<br>
+                            2. GAS 部署權限是否設為「所有人」。<br>
+                            <span style="color:#f1c40f;">3. <strong>環境限制：</strong>若您目前在「網頁預覽環境」中，跨網域請求(CORS)通常會被系統強制阻擋。請下載此 HTML 檔案並在一般瀏覽器中開啟測試。</span>
+                        </div><br><br>
+                        <button onclick="resetApiUrl()" style="padding:10px 20px; font-size:1rem; border-radius:5px; background:#e74c3c; color:white; border:none; cursor:pointer;">重新輸入網址</button>
                         </div>`;
                 }
             });
@@ -409,15 +419,12 @@
     window.delTodo = (i) => { if (confirm('確定要刪除？')) { appData.todos.splice(i, 1); renderTodos(); save('todo'); } };
     window.updateTodoText = (i, el) => { appData.todos[i].txt = el.innerText; save('todo'); };
     
-    // 修正點 2：改寫 saveTodosOrder 以保留所有擴充屬性 (例如鬧鐘)
     function saveTodosOrder() {
         const newTodos = [];
         document.getElementById('todo-list').querySelectorAll('.todo-item').forEach(li => { 
             const idx = li.getAttribute('data-index');
             if (idx !== null && appData.todos[idx]) {
-                // 將原物件拉出，保留所有尚未綁定在 DOM 上的擴充欄位 (例如 alarmTime)
                 const originalTodo = appData.todos[idx];
-                // 順便同步 DOM 的最新狀態 (防呆：萬一在編輯文字當下拖曳)
                 originalTodo.txt = li.querySelector('.todo-text').innerText;
                 originalTodo.done = li.querySelector('.todo-checkbox').checked;
                 newTodos.push(originalTodo);
@@ -455,7 +462,6 @@
     window.delProject = (i) => { if (confirm('確定要刪除這項專案任務？')) { appData.projectTodos.splice(i, 1); renderProjectTodos(); save('projectTodo'); } };
     window.updateProjectText = (i, el) => { appData.projectTodos[i].txt = el.innerText; save('projectTodo'); };
     
-    // 修正點 2-b：同步改寫專案待辦事項的排序存檔函數
     function saveProjectTodosOrder() {
         const newTodos = [];
         document.getElementById('project-list').querySelectorAll('.todo-item').forEach(li => { 
