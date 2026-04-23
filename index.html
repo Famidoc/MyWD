@@ -72,8 +72,8 @@
     .todo-input-field { flex: 1; padding: 12px; border-radius: 5px; border: none; font-size: 1rem; background: #ecf0f1; color: #2c3e50; }
     .add-todo-btn { width: 50px; background: #27ae60; color: white; border: none; border-radius: 5px; font-size: 1.5rem; cursor: pointer;}
     .todo-ul { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; padding-right: 2px; }
-    .todo-item { background: rgba(255,255,255,0.05); padding: 8px 10px; margin-bottom: 8px; border-radius: 5px; display: flex; align-items: center; border: 1px solid rgba(255,255,255,0.05); touch-action: none; }
-    .drag-handle { cursor: grab; color: #7f8c8d; padding: 5px 8px 5px 0; font-size: 1.2rem; user-select: none; -webkit-user-select: none; }
+    .todo-item { background: rgba(255,255,255,0.05); padding: 8px 10px; margin-bottom: 8px; border-radius: 5px; display: flex; align-items: center; border: 1px solid rgba(255,255,255,0.05); }
+    .drag-handle { cursor: grab; color: #7f8c8d; padding: 5px 8px 5px 0; font-size: 1.2rem; user-select: none; -webkit-user-select: none; touch-action: none; }
     .drag-handle:active { cursor: grabbing; color: #3498db; }
     .todo-checkbox { transform: scale(1.3); margin-right: 10px; cursor: pointer; }
     .todo-text { flex: 1; margin: 0 5px; outline: none; word-break: break-all; line-height: 1.4; padding: 5px; }
@@ -83,6 +83,7 @@
     
     .editor { 
         background: #fdfdfd; color: #2c3e50; border-radius: 5px; padding: 15px; flex: 1; overflow-y: auto; outline: none; font-size: 1.05rem; line-height: 1.6; 
+        /* 手機局部選取修復 */
         -webkit-user-select: text;
         user-select: text;
         -webkit-touch-callout: default;
@@ -95,7 +96,7 @@
 
     #loading-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2c3e50; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9998; transition: opacity 0.5s; }
     
-    /* ==================== 4. 首次綁定畫面 ==================== */
+    /* ==================== 4. 首次綁定畫面 (新增) ==================== */
     #setup-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(44, 62, 80, 0.98); backdrop-filter: blur(15px);
@@ -127,6 +128,11 @@
         .tab-btn { padding: 18px 0; font-size: 1.15rem; gap: 5px; } 
         h2 { font-size: 1.4rem; padding-bottom: 12px; min-height: 50px; } 
     }
+    /* 鬧鐘元件樣式 */
+    .alarm-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 0 5px; opacity: 0.4; transition: 0.2s; }
+    .alarm-btn.active { opacity: 1; filter: drop-shadow(0 0 3px #f1c40f); }
+    .alarm-input { font-size: 0.8rem; padding: 2px; border-radius: 4px; border: 1px solid #7f8c8d; background: #ecf0f1; display: none; margin-right: 5px; max-width: 125px; }
+    .alarm-input.show { display: inline-block; }
   </style>
 </head>
 <body>
@@ -230,13 +236,13 @@
     let GAS_API_URL = localStorage.getItem(STORAGE_KEY);
 
     window.onload = function() {
-        // 修正點 1: 妥善使用 try-catch 包裝並明確排除 Canvas blob: 網址，徹底解決 Service Worker 同步報錯
+        // 喚醒 PWA 機制 (加入 blob 排除以防沙盒報錯)
         try {
             if ('serviceWorker' in navigator && !window.location.href.startsWith('blob:')) {
                 navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW 註冊略過:', err));
             }
         } catch (e) {
-            console.log('Service Worker 在此環境下不支援或被阻擋。', e);
+            console.log('Service Worker 在此環境下不支援。');
         }
 
         // 檢查是否已綁定 API
@@ -247,6 +253,7 @@
             document.getElementById('setup-overlay').style.display = 'none';
             fetchDataFromDrive();
             enableImageResizing();
+            enablePlainTextPaste(); // 啟用防止富文本貼上機制
         }
     };
 
@@ -259,6 +266,7 @@
             document.getElementById('loading-mask').style.display = 'flex';
             fetchDataFromDrive();
             enableImageResizing();
+            enablePlainTextPaste();
         } else {
             alert('⚠️ 網址格式錯誤！請確保是 https://script.google.com/ 開頭的網址。');
         }
@@ -295,7 +303,6 @@
                 console.error("讀取資料庫失敗:", error);
                 const loadingMask = document.getElementById('loading-mask');
                 if (loadingMask) {
-                    // 修正點 2: 優化錯誤訊息，提示使用者可能受到預覽沙盒阻擋
                     loadingMask.innerHTML = `
                         <div style="color:#e74c3c; font-size: 1.1rem; text-align: center; line-height:1.6; max-width: 90%;">
                         <div style="font-size:2rem; margin-bottom:10px;">❌</div>
@@ -304,7 +311,7 @@
                             請檢查以下可能原因：<br>
                             1. API 網址是否正確。<br>
                             2. GAS 部署權限是否設為「所有人」。<br>
-                            <span style="color:#f1c40f;">3. <strong>環境限制：</strong>若您目前在「網頁預覽環境」中，跨網域請求(CORS)通常會被系統強制阻擋。請下載此 HTML 檔案並在一般瀏覽器中開啟測試。</span>
+                            <span style="color:#f1c40f;">3. <strong>環境限制：</strong>若您目前在「網頁預覽環境」中，跨網域請求(CORS)通常會被阻擋。請下載檔案後在本機開啟。</span>
                         </div><br><br>
                         <button onclick="resetApiUrl()" style="padding:10px 20px; font-size:1rem; border-radius:5px; background:#e74c3c; color:white; border:none; cursor:pointer;">重新輸入網址</button>
                         </div>`;
@@ -392,7 +399,7 @@
         document.getElementById('project-header-label').innerText = name;
     }
 
-    // 待辦事項 (一般)
+    // === 待辦事項 (一般) ===
     document.getElementById('add-todo-btn').onclick = () => {
         const t = document.getElementById('todo-input').value.trim();
         if(t) { appData.todos.push({txt:t, done:false}); document.getElementById('todo-input').value=''; renderTodos(); save('todo'); }
@@ -406,6 +413,8 @@
                 <div class="drag-handle">☰</div>
                 <input type="checkbox" class="todo-checkbox" ${todo.done?'checked':''} onchange="toggleTodo(${i})">
                 <span class="todo-text" ${todo.done ? '' : 'contenteditable="true"'} onblur="updateTodoText(${i}, this)" style="${todo.done?'text-decoration:line-through;opacity:0.5':''}">${todo.txt}</span>
+                <input type="datetime-local" class="alarm-input" value="${todo.alarm || ''}" onchange="setAlarm(${i}, this.value, 'todo')">
+                <button class="alarm-btn ${todo.alarm ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
                 <button class="delete-btn" onclick="delTodo(${i})">×</button>
             `;
             ul.appendChild(li);
@@ -415,10 +424,7 @@
         }
     }
 
-    window.toggleTodo = (i) => { appData.todos[i].done = !appData.todos[i].done; renderTodos(); save('todo'); };
-    window.delTodo = (i) => { if (confirm('確定要刪除？')) { appData.todos.splice(i, 1); renderTodos(); save('todo'); } };
-    window.updateTodoText = (i, el) => { appData.todos[i].txt = el.innerText; save('todo'); };
-    
+    // 修復: 清理重複的 saveTodosOrder，改回使用「保留原物件」的方式，避免鬧鐘資料在拖曳排序後遺失
     function saveTodosOrder() {
         const newTodos = [];
         document.getElementById('todo-list').querySelectorAll('.todo-item').forEach(li => { 
@@ -435,7 +441,11 @@
         save('todo');
     }
 
-    // 專案待辦事項
+    window.toggleTodo = (i) => { appData.todos[i].done = !appData.todos[i].done; renderTodos(); save('todo'); };
+    window.delTodo = (i) => { if (confirm('確定要刪除？')) { appData.todos.splice(i, 1); renderTodos(); save('todo'); } };
+    window.updateTodoText = (i, el) => { appData.todos[i].txt = el.innerText; save('todo'); };
+
+    // === 專案待辦事項 ===
     document.getElementById('add-project-btn').onclick = () => {
         const t = document.getElementById('project-todo-input').value.trim();
         if(t) { appData.projectTodos.push({txt:t, done:false}); document.getElementById('project-todo-input').value=''; renderProjectTodos(); save('projectTodo'); }
@@ -449,6 +459,8 @@
                 <div class="drag-handle">☰</div>
                 <input type="checkbox" class="todo-checkbox" ${todo.done?'checked':''} onchange="toggleProject(${i})">
                 <span class="todo-text" ${todo.done ? '' : 'contenteditable="true"'} onblur="updateProjectText(${i}, this)" style="${todo.done?'text-decoration:line-through;opacity:0.5':''}">${todo.txt}</span>
+                <input type="datetime-local" class="alarm-input" value="${todo.alarm || ''}" onchange="setAlarm(${i}, this.value, 'projectTodo')">
+                <button class="alarm-btn ${todo.alarm ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
                 <button class="delete-btn" onclick="delProject(${i})">×</button>
             `;
             ul.appendChild(li);
@@ -458,10 +470,7 @@
         }
     }
 
-    window.toggleProject = (i) => { appData.projectTodos[i].done = !appData.projectTodos[i].done; renderProjectTodos(); save('projectTodo'); };
-    window.delProject = (i) => { if (confirm('確定要刪除這項專案任務？')) { appData.projectTodos.splice(i, 1); renderProjectTodos(); save('projectTodo'); } };
-    window.updateProjectText = (i, el) => { appData.projectTodos[i].txt = el.innerText; save('projectTodo'); };
-    
+    // 修復: 清理重複並確保專案待辦也能保存擴充屬性
     function saveProjectTodosOrder() {
         const newTodos = [];
         document.getElementById('project-list').querySelectorAll('.todo-item').forEach(li => { 
@@ -478,10 +487,27 @@
         save('projectTodo');
     }
 
-    // 編輯器與剪貼簿
+    window.toggleProject = (i) => { appData.projectTodos[i].done = !appData.projectTodos[i].done; renderProjectTodos(); save('projectTodo'); };
+    window.delProject = (i) => { if (confirm('確定要刪除這項專案任務？')) { appData.projectTodos.splice(i, 1); renderProjectTodos(); save('projectTodo'); } };
+    window.updateProjectText = (i, el) => { appData.projectTodos[i].txt = el.innerText; save('projectTodo'); };
+
+    // ==================== 編輯器與剪貼簿 ====================
     document.getElementById('idea-editor').oninput = () => save('idea');
     document.getElementById('scratch-editor').oninput = () => save('scratch');
     window.clearScratch = () => { if(confirm('確定要清空臨時編輯區嗎？')) { document.getElementById('scratch-editor').innerHTML=''; save('scratch'); } };
+
+    // 新增：攔截原生的「貼上」事件，強制轉為純文字 (解決富文本跑版問題)
+    function enablePlainTextPaste() {
+        document.querySelectorAll('.editor').forEach(editor => {
+            editor.addEventListener('paste', function(e) {
+                e.preventDefault();
+                // 取得純文字內容
+                let text = (e.originalEvent || e).clipboardData.getData('text/plain');
+                // 執行純文字寫入 (支援復原 ctrl+z)
+                document.execCommand('insertText', false, text);
+            });
+        });
+    }
 
     function robustCopy(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(() => alert('✅ 已複製')).catch(() => fallbackCopy(text)); } else { fallbackCopy(text); }
@@ -508,7 +534,11 @@
                 if(t) { if(type === 'todo') appData.todos.push({txt: t, done: false}); else appData.projectTodos.push({txt: t, done: false}); added = true; }
             });
             if(added) { if(type === 'todo') { renderTodos(); save('todo'); } else { renderProjectTodos(); save('projectTodo'); } alert('✅ 已貼上清單'); }
-        } else { el.innerHTML += `<div>${text.replace(/\n/g, '<br>')}</div>`; save(elementId === 'idea-editor' ? 'idea' : 'scratch'); }
+        } else { 
+            // 若透過按鈕貼上，使用純文字並替換換行
+            el.innerHTML += `<div>${text.replace(/\n/g, '<br>')}</div>`; 
+            save(elementId === 'idea-editor' ? 'idea' : 'scratch'); 
+        }
     }
 
     window.copyTodos = () => { robustCopy(appData.todos.map(t => `- [${t.done?'x':' '}] ${t.txt}`).join('\n')); };
@@ -543,6 +573,67 @@
             isResizing = false; currentImg = null;
         });
     }
+    
+    // ==================== 5. 鬧鐘與通知機制 ====================
+    // 切換時間輸入框的顯示狀態
+    window.toggleAlarmUI = (btn) => {
+        const input = btn.previousElementSibling;
+        input.classList.toggle('show');
+    };
+
+    // 儲存設定的鬧鐘時間
+    window.setAlarm = (i, value, type) => {
+        if (type === 'todo') {
+            appData.todos[i].alarm = value;
+            appData.todos[i].alarmTriggered = false; // 重置觸發狀態
+            renderTodos(); save('todo');
+        } else {
+            appData.projectTodos[i].alarm = value;
+            appData.projectTodos[i].alarmTriggered = false;
+            renderProjectTodos(); save('projectTodo');
+        }
+        
+        // 要求瀏覽器通知權限
+        if ("Notification" in window && Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+    };
+
+    // 發送系統通知
+    function triggerNotification(title, body) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(title, { body: body, icon: './app-icon.png' });
+        } else {
+            // 若裝置不支援或未授權，退回使用 Alert
+            alert(`【${title}】\n${body}`); 
+        }
+    }
+
+    // 定時器：每 30 秒檢查一次是否有鬧鐘到期
+    setInterval(() => {
+        if(!appData.todos && !appData.projectTodos) return;
+        const now = new Date();
+
+        const checkAlarms = (list) => {
+            let changed = false;
+            list.forEach(item => {
+                // 檢查：有設定鬧鐘、尚未完成、且尚未觸發過
+                if (item.alarm && !item.done && !item.alarmTriggered) {
+                    const alarmTime = new Date(item.alarm);
+                    if (now >= alarmTime) {
+                        triggerNotification('⏰ 待辦提醒', item.txt);
+                        item.alarmTriggered = true; // 標記為已觸發
+                        changed = true;
+                    }
+                }
+            });
+            return changed;
+        };
+
+        if (appData.todos && checkAlarms(appData.todos)) save('todo');
+        if (appData.projectTodos && checkAlarms(appData.projectTodos)) save('projectTodo');
+
+    }, 30000);
   </script>
 </body>
 </html>
