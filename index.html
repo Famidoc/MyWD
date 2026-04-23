@@ -422,7 +422,7 @@
                 <input type="checkbox" class="todo-checkbox" ${todo.done?'checked':''} onchange="toggleTodo(${i})">
                 <span class="todo-text" ${todo.done ? '' : 'contenteditable="true"'} onblur="updateTodoText(${i}, this)" style="${todo.done?'text-decoration:line-through;opacity:0.5':''}">${todo.txt}</span>
                 <input type="datetime-local" class="alarm-input" value="${todo.alarm || ''}" onchange="setAlarm(${i}, this.value, 'todo')">
-                <button class="alarm-btn ${todo.alarm ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
+                <button class="alarm-btn ${todo.alarm && !todo.alarmTriggered ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
                 <button class="delete-btn" onclick="delTodo(${i})">×</button>
             `;
             ul.appendChild(li);
@@ -467,7 +467,7 @@
                 <input type="checkbox" class="todo-checkbox" ${todo.done?'checked':''} onchange="toggleProject(${i})">
                 <span class="todo-text" ${todo.done ? '' : 'contenteditable="true"'} onblur="updateProjectText(${i}, this)" style="${todo.done?'text-decoration:line-through;opacity:0.5':''}">${todo.txt}</span>
                 <input type="datetime-local" class="alarm-input" value="${todo.alarm || ''}" onchange="setAlarm(${i}, this.value, 'projectTodo')">
-                <button class="alarm-btn ${todo.alarm ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
+                <button class="alarm-btn ${todo.alarm && !todo.alarmTriggered ? 'active' : ''}" onclick="toggleAlarmUI(this)" title="設定提醒">⏰</button>
                 <button class="delete-btn" onclick="delProject(${i})">×</button>
             `;
             ul.appendChild(li);
@@ -505,10 +505,25 @@
     window.clearIdea = () => { if(confirm('確定要清空靈感筆記嗎？這將會刪除畫面上的隱藏髒資料。')) { document.getElementById('idea-editor').innerHTML=''; save('idea'); } };
     window.clearScratch = () => { if(confirm('確定要清空臨時編輯區嗎？')) { document.getElementById('scratch-editor').innerHTML=''; save('scratch'); } };
 
-    // 攔截原生的「貼上」事件，強制轉為純文字
+    // 攔截原生的「貼上」事件，強制轉為純文字 (保留圖片放行)
     function enablePlainTextPaste() {
         document.querySelectorAll('.editor').forEach(editor => {
             editor.addEventListener('paste', function(e) {
+                // 檢查剪貼簿中是否包含圖片
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                let hasImage = false;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image/') !== -1) {
+                        hasImage = true;
+                        break;
+                    }
+                }
+                
+                // 如果包含圖片，放行原生貼上機制 (允許貼上圖片)
+                if (hasImage) {
+                    return;
+                }
+
                 e.preventDefault();
                 // 取得純文字內容
                 let text = (e.originalEvent || e).clipboardData.getData('text/plain');
@@ -639,8 +654,14 @@
             return changed;
         };
 
-        if (appData.todos && checkAlarms(appData.todos)) save('todo');
-        if (appData.projectTodos && checkAlarms(appData.projectTodos)) save('projectTodo');
+        if (appData.todos && checkAlarms(appData.todos)) {
+            renderTodos();
+            save('todo');
+        }
+        if (appData.projectTodos && checkAlarms(appData.projectTodos)) {
+            renderProjectTodos();
+            save('projectTodo');
+        }
 
     }, 30000);
   </script>
